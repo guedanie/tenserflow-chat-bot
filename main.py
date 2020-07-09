@@ -1,146 +1,112 @@
 import nltk
-from nltk.stem.lancaster import LancasterStemmer
-stemmer = LancasterStemmer()
+from nltk.stem import WordNetLemmatizer
+lemmatizer = WordNetLemmatizer()
 
-import numpy as np
-import pandas as pd
-import tflearn
-import tensorflow as tf
-import random
 import json
 import pickle
 
-from tensorflow.python.compiler.tensorrt import trt_convert as trt
+import numpy as np
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Dropout
+from keras.optimizers import SGD
+import random
 
-with open("intents.json") as file:
-    data = json.load(file)
+# 1. import and load the data
 
-try: 
-    with open("intents.json") as file:
-        data = json.load(file)
+words = []
+classes = []
+documents = []
+ignore_words = ["?", "!"]
+data_file = open("intents.json").read()
+intents = json.loads(data_file)
 
-except:
+# 2. Preprocess data
 
-    # Extracting Data
+for intent in intents["intents"]:
+    for pattern in intent["patterns"]:
 
-    words = []
-    labels = []
-    docs_x = []
-    docs_y = []
+        # tokenize each word
+        w = nltk.word_tokenize(pattern)
+        words.extend(w)
 
-    for intent in data["intents"]:
-        for pattern in intent["patterns"]:
-            wrds = nltk.word_tokenize(pattern)
-            words.extend(wrds)
-            docs_x.append(wrds)
-            docs_y.append(intent["tag"])
-        
-        if intent["tag"] not in labels:
-            labels.append(intent["tag"])
+        # add documents in the courpus
+        documents.append((w, intent["tag"]))
 
+        # add to our classes list
+        if intent["tag"] not in classes:
+            classes.append(intent["tag"])
 
-    # words stemming
+# lemmatize, lower each word and remove duplicates
+words = [lemmatizer.lemmatize(w.lower()) for w in words if w not in ignore_words] 
 
-    words = [stemmer.stem(w.lower()) for w in words if w != "?"]
-    words = sorted(list(set(words)))
+words = sorted(list(set(words)))
 
-    labels = sorted(labels)
+# sort classes
 
-    # creating a bag of words
+classes = sorted(list(set(classes)))
 
-    training = []
-    output = []
+# documents = combination between patterns and intents
+print(len(documents), "documents")
 
-    out_empty = [0 for _ in range(len(labels))]
+print(len(classes), "classes", classes)
 
-    for x, doc in enumerate(docs_x):
-        bag = []
+# words = all words, vocabulary
+print(len(words), "unique lemmatized words", words)
 
-        wrds = [stemmer.stem(w.lower()) for w in doc]
+pickle.dump(words,open("words.pkl", "wb"))
+pickle.dump(classes,open("classes.pkl", "wb"))
 
-        for w in words:
-            if w in wrds:
-                bag.append(1)
-            else:
-                bag.append(0)
-            
-        output_row = out_empty[:]
-        output_row[labels.index(docs_y[x])] = 1
+# create training and testing data
+training = []
+# create an empty arry for our output
+output_empty = [0] * len(classes)
 
-        training.append(bag)
-        output.append(output_row)
+# training set, bag of words for each sentence
+for doc in documents:
+    # initialize our bag of words
+    bag = []
+    # list of tokenized words for the pattern
+    pattern_words = doc[0]
 
-    
+    # lemmatize each word - create base word, in attenmpt to represent related words
+    pattern_words = [lemmatizer.lemmatize(word.lower()) for word in pattern_words]
+    # create our bag of words with 1, if word match found in current pattern
+    for w in words:
+        bag.append(1) if w in pattern_words else bag.append(0)
 
-# Use numpy to ocnvert our training data nad output to numpy arrays
+    # output is a "0" for each tag and "1" for current tag (for each pattern)
+    output_row = list(output_empty)
+    output_row[classes.index(doc[1])] = 1
 
-    training = np.array(training)
-    output = np.array(output)
+    training.append([bag, output_row])
 
-    with open("data.pickle", "wb") as f:
-            pickle.dump((words, labels, training, output), f)
+# shuffle our features and turn into np.array
+random.shuffle(training)
+training = np.array(training)
 
-# Now that we have preprocessed all of our data we are ready to start creating and training a model. 
-# For our purposes we will use a fairly standard feed-forward neural network with two hidden layers. 
-# The goal of our network will be to look at a bag of words and give a class that they belong too (one of our tags from the JSON file).
+# create train and test lists. X - patterns, y - intents
+train_x = list(training[:,0])
+train_y = list(training[:,1])
+print("Training data created")
 
-# We will start by defining the architecture of our model. 
-# Keep in mind that you can mess with some of the numbers here and try to make an even better model! 
-# A lot of machine learning is trial an error.
+# 4. build the model
 
-# tf.reset_default_graph()
+# Create model - 3 layers. First layer 128 neurons, second layer 64 neurons and 3rd output layer contains number of neurons
+# equal to number of intents to predict output intent with softmax
 
-net = tflearn.input_data(shape=[None, len(training[0])])
-net = tflearn.fully_connected(net, 8)
-net = tflearn.fully_connected(net, 8)
-net = tflearn.fully_connected(net, len(output[0]), activation="softmax")
-net = tflearn.regression(net)
+model = Sequential()
+model.add(Dense(128, input_shape=(len(train_x[0]),), activation="relu"))
+model.add(Dropout(0.5))
+model.add(Dense(64, activation = "relu"))
+model.add(Dropout(0.5))
+model.add(Dense(len(train_y[0]), activation="softmax"))
 
-model = tflearn.DNN(net)
+# Compile model. Stochastic gradient descent with Nesterov accelerated gradient gives good results for this model
+sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
 
-# Here we fit the model. If the script can find an existing model, it will use that instead
-try:
-    model.load("model.tflearn")
-except:
-    model.fit(training, output, n_epoch=1000, batch_size=8, show_metric=True)
-    model.save("model.tflearn")
+# fitting and saving the model
+hist = model.fit(np.array(train_x), np.array(train_y), epochs=200, batch_size=5, verbose=1)
+model.save("chatbot_model.h5", hist)
 
-# Making Predictions
-
-# This makes the process to generate a response look like the following:
-# – Get some input from the user
-# – Convert it to a bag of words
-# – Get a prediction from the model
-# – Find the most probable class
-# – Pick a response from that class
-
-def bag_of_words(s, words):
-    bag = [0 for _ in range(len(words))]
-
-    s_words = nltk.word_tokenize(s)
-    s_words = [stemmer.stem(words.lower()) for words in s_words]
-
-    for se in s_words:
-        for i, w in enumerate(words):
-            if w == se:
-                bag[i] = 1
-
-    return np.array(bag)
-
-def chat():
-    print("Start talking with the bot (type quit to stop)!")
-    while True:
-        inp = input("You: ")
-        if inp.lower() == "quit":
-            break
-        
-        results = model.predict([bag_of_words(inp, words)])
-        results_index = np.argmax(results)
-        tag = labels[results_index]
-
-        for tg in data["intents"]:
-            if tg["tag"] == tag:
-                responses = tg["responses"]
-        print(random.choice(responses))
-
-chat()
+print("model created")
