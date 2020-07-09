@@ -100,11 +100,11 @@ ChatLog['yscrollcommand'] = scrollbar.set
 
 #Create Button to send message
 SendButton = Button(base, font=("Verdana",12,'bold'), text="Send", width="12", height=5,
-                    bd=0, bg="#32de97", activebackground="#3c9d9b",fg='#ffffff',
+                    bd=0, background="green2", activebackground="dark green",fg='black',
                     command= send )
 
 #Create the box to enter message
-EntryBox = Text(base, bd=0, bg="white",width="29", height="5", font="Arial")
+EntryBox = Text(base, bd=0, bg="ghost white",width="29", height="5", font="Arial")
 
 #EntryBox.bind("<Return>", send)
 #Place all components on the screen
