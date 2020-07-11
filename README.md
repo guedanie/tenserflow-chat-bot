@@ -1,8 +1,19 @@
 # Creating a Chatbot with Keras and TensorFlow
 
-The following project is intended to get further practice building neural nets. The project will be mostly following a tutorial from TechwithTim [https://techwithtim.net/tutorials/ai-chatbot/part-1/]. 
+The following project is intended to get further practice building neural nets. I will be using an intents database focusing on adverse reactions and blood pressure help. 
 
-The second phase of the project will be to further enhance the chatbot, then deploy it to a GUI app using Tkinter... or a HTML app using Flask or Django.
+The model was train, and we were able to accomplish 100% accuracy. 
+
+# How to reproduce this project?
+
+Steps:
+1. Clone the contents of this repo
+1. In your terminal, run `python main.py`
+1. Once the model is created, run `python chatapp.py`. This will launch the GUI app using Tkinter.
+
+## Further improvements
+
+Now that I have a better understanding of how to us neural nets to build chatbots, my next project is to actually build my own intents database, and apply the same logic to create a more personalize chatbot. 
 
 Intended length the project: 3 days
 
